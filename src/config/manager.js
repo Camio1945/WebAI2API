@@ -88,6 +88,8 @@ export function getBrowserConfig() {
         headless: browser.headless || false,
         fission: browser.fission !== false, // 默认 true
         humanizeCursor: browser.humanizeCursor ?? true, // false | true | 'camou'
+        windowMaximized: browser.windowMaximized !== false, // 默认 true
+        windowAutoFocus: browser.windowAutoFocus === true, // 默认 false
         cssInject: {
             animation: cssInject.animation || false,
             filter: cssInject.filter || false,
@@ -118,6 +120,8 @@ export function saveBrowserConfig(data) {
     if (data.headless !== undefined) config.browser.headless = data.headless;
     if (data.fission !== undefined) config.browser.fission = data.fission;
     if (data.humanizeCursor !== undefined) config.browser.humanizeCursor = data.humanizeCursor;
+    if (data.windowMaximized !== undefined) config.browser.windowMaximized = data.windowMaximized;
+    if (data.windowAutoFocus !== undefined) config.browser.windowAutoFocus = data.windowAutoFocus;
 
     // CSS 性能优化配置
     if (data.cssInject) {

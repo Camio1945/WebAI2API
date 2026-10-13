@@ -23,6 +23,7 @@
 import path from 'path';
 import { logger } from '../../utils/logger.js';
 import { TIMEOUTS } from '../../utils/constants.js';
+import { ensureWindowReady, bringPageToFront } from './window.js';
 
 /**
  * 生成指定范围内的随机数
@@ -196,27 +197,91 @@ export function getHumanClickPoint(box, type = 'random') {
 }
 
 /**
- * 等待元素布局稳定（基于 requestAnimationFrame）
+ * 给任意 Promise 加一个硬超时
+ * 用于防止页面内等待（evaluate）因浏览器暂停渲染等原因永久挂起
+ * @template T
+ * @param {Promise<T>} promise - 原始 Promise
+ * @param {number} ms - 超时时间 (ms)
+ * @param {T} [fallback] - 超时后的返回值（不传则 reject）
+ * @returns {Promise<T>}
+ */
+function raceTimeout(promise, ms, fallback) {
+    let timer;
+    return Promise.race([
+        Promise.resolve(promise).finally(() => clearTimeout(timer)),
+        new Promise((resolve, reject) => {
+            timer = setTimeout(() => {
+                if (fallback !== undefined) resolve(fallback);
+                else reject(new Error(`TIMEOUT_${ms}ms`));
+            }, ms);
+        })
+    ]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * 把元素滚动到可视区域（不依赖 requestAnimationFrame）
+ *
+ * 说明: Playwright 自带的 scrollIntoViewIfNeeded 内部用 rAF 轮询等待元素 stable，
+ *      窗口被遮挡/最小化导致 rAF 被浏览器暂停时会永久挂起。这里直接在页面内调用
+ *      原生 scrollIntoView，同步完成，不受刷新驱动影响。
+ *
  * @param {import('playwright-core').ElementHandle} element - 元素句柄
- * @param {number} stableFrames - 需要连续稳定的帧数，建议提高到 10 (约160ms)
- * @param {number} timeout - 总超时时间 (ms)
+ * @returns {Promise<void>}
+ */
+export async function scrollElementIntoView(element) {
+    if (!element) return;
+    try {
+        await raceTimeout(
+            element.evaluate((el) => {
+                try {
+                    if (typeof el.scrollIntoView === 'function') {
+                        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+                    }
+                } catch (e) {
+                    // 忽略（元素可能处于特殊状态），后续点击会自行处理
+                }
+            }),
+            3000,
+            undefined
+        );
+    } catch (e) {
+        // 滚动失败不阻断点击流程
+    }
+}
+
+/**
+ * 等待元素布局稳定
+ *
+ * 实现要点（重要）：
+ * - 使用 setInterval 轮询而非 requestAnimationFrame：
+ *   窗口被遮挡或最小化时浏览器会暂停 rAF，基于 rAF 的等待会永久挂起，
+ *   最终导致 safeClick 超时 (CLICK_TIMEOUT)。
+ * - 页面内 + Node 侧双重兜底超时，任何情况下都不会无限等待。
+ *
+ * @param {import('playwright-core').ElementHandle} element - 元素句柄
+ * @param {number} [stableFrames=20] - 需要连续稳定的采样次数 (16ms/次，约 320ms)
+ * @param {number} [timeout=2000] - 总超时时间 (ms)
  */
 async function waitForElementStable(element, stableFrames = 20, timeout = 2000) {
     if (!element) return;
 
     try {
-        await element.evaluate((targetEl, { stableFrames, timeout }) => {
+        const waitPromise = element.evaluate((targetEl, args) => {
             return new Promise((resolve) => {
                 let lastRect = targetEl.getBoundingClientRect();
                 let consecutiveStable = 0;
-                const startTime = performance.now();
+                const startTime = Date.now();
+                let settled = false;
 
-                function check() {
-                    // 1. 超时检查：如果超过总时间，不再等待直接返回，防止死循环
-                    if (performance.now() - startTime > timeout) {
-                        resolve();
-                        return;
-                    }
+                const finish = () => {
+                    if (settled) return;
+                    settled = true;
+                    clearInterval(timer);
+                    resolve();
+                };
+
+                const check = () => {
+                    if (settled) return;
 
                     const rect = targetEl.getBoundingClientRect();
 
@@ -229,26 +294,27 @@ async function waitForElementStable(element, stableFrames = 20, timeout = 2000) 
 
                     if (isSame) {
                         consecutiveStable++;
-                        // 2. 只有连续 N 帧都不动才确定
-                        if (consecutiveStable >= stableFrames) {
-                            resolve();
+                        if (consecutiveStable >= args.stableFrames) {
+                            finish();
                             return;
                         }
                     } else {
-                        // 只要动了一次，计数器归零，重新开始计数
                         consecutiveStable = 0;
                         lastRect = rect;
                     }
 
-                    requestAnimationFrame(check);
-                }
+                    if (Date.now() - startTime > args.timeout) finish();
+                };
 
-                // 3. 稍微延迟启动检测，给响应式框架留启动时间
-                setTimeout(() => {
-                    requestAnimationFrame(check);
-                }, 50);
+                // 用定时器轮询：相比 rAF，定时器在窗口被遮挡时仍会推进
+                const timer = setInterval(check, 16);
+                // 兜底：即使定时器被节流，到点也强制结束
+                setTimeout(finish, args.timeout + 200);
             });
         }, { stableFrames, timeout });
+
+        // Node 侧二次兜底（页面内 evaluate 本身卡住时也能继续）
+        await raceTimeout(waitPromise, timeout + 1500, undefined);
     } catch (e) {
         // 忽略错误，继续执行
     }
@@ -264,11 +330,13 @@ async function waitForElementStable(element, stableFrames = 20, timeout = 2000) 
  * @param {number} [options.clickCount=1] - 点击次数: 1=单击, 2=双击
  * @param {number} [options.timeout=15000] - 超时时间 (毫秒)
  * @param {boolean} [options.waitStable=false] - 是否等待元素布局稳定后再点击
+ * @param {boolean} [options._noRetry=false] - 关闭"超时后把窗口置前再重试一次"的自愈逻辑
  * @returns {Promise<void>}
  */
 export async function safeClick(page, target, options = {}) {
     const clickCount = options.clickCount || 1;
     const waitStable = options.waitStable !== false; // 默认 true
+    const canRetry = options._noRetry !== true;      // 超时自愈重试（内部递归时关闭）
     const selector = typeof target === 'string' ? target : '元素';
     // humanizeCursorMode: false=禁用, true=ghost-cursor, "camou"=Camoufox内置
     // 只有 true 时才使用 ghost-cursor，其他情况都使用原生点击
@@ -312,9 +380,10 @@ export async function safeClick(page, target, options = {}) {
         logger.debug('浏览器', `[safeClick] 已找到 ${logKey}`);
 
         // 2. 确保元素在可视区域内
+        //    使用自建的滚动逻辑，避免 Playwright 内部基于 rAF 的等待在窗口被遮挡时挂起
         logger.debug('浏览器', `[safeClick] 滚动到可视区域...`);
         if (aborted) return;
-        await el.scrollIntoViewIfNeeded().catch(() => { });
+        await scrollElementIntoView(el);
         if (aborted) return;
 
         // 3. 如果开启了布局稳定等待，等待元素位置稳定
@@ -360,22 +429,51 @@ export async function safeClick(page, target, options = {}) {
         await el.click({ clickCount, force: true });
     };
 
-    // 带超时的执行（移除了重试机制）
-    let timeoutId;
-    try {
-        const timeoutPromise = new Promise((_, reject) => {
-            timeoutId = setTimeout(() => {
-                aborted = true;
-                reject(new Error('CLICK_TIMEOUT'));
-            }, timeout);
-        });
+    // 带单次超时的执行
+    const attempt = async (attemptTimeout) => {
+        aborted = false;
+        let timeoutId;
+        try {
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    aborted = true;
+                    reject(new Error('CLICK_TIMEOUT'));
+                }, attemptTimeout);
+            });
 
-        await Promise.race([
-            doClick().finally(() => clearTimeout(timeoutId)),
-            timeoutPromise
-        ]);
+            await Promise.race([
+                doClick().finally(() => clearTimeout(timeoutId)),
+                timeoutPromise
+            ]);
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    };
+
+    // 交互前确认浏览器窗口可见（节流，开销极低）
+    await ensureWindowReady(page);
+
+    try {
+        await attempt(timeout);
     } catch (err) {
-        clearTimeout(timeoutId);
+        // 自愈：CLICK_TIMEOUT 通常意味着窗口被遮挡/最小化导致渲染暂停，
+        // 先把窗口恢复并提到前台，再用较短的超时重试一次
+        if (canRetry && err.message?.includes('CLICK_TIMEOUT')) {
+            logger.warn('浏览器', `[safeClick] 点击超时 (${selector})，尝试将浏览器窗口置前后重试`);
+
+            try {
+                await bringPageToFront(page);
+            } catch (e) {
+                logger.debug('浏览器', `[safeClick] 窗口置前失败: ${e.message}`);
+            }
+
+            try {
+                await attempt(Math.max(8000, Math.floor(timeout / 2)));
+                return;
+            } catch (retryErr) {
+                err = retryErr;
+            }
+        }
         throw new Error(`点击操作失败 (${selector}): ${err.message}`);
     }
 }
@@ -430,7 +528,8 @@ export async function safeScroll(page, target, options = {}) {
         }
 
         // 降级逻辑: 直接在元素上 hover 并滚动
-        await el.hover();
+        // hover 内部依赖 rAF 做 stable 检测，窗口被遮挡时会挂起，这里加硬超时
+        await raceTimeout(el.hover(), 10000, null).catch(() => { });
         await page.mouse.wheel(deltaX, deltaY);
     } catch (err) {
         throw err;

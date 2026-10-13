@@ -6,6 +6,7 @@
 import fs from 'fs';
 import { logger } from '../../utils/logger.js';
 import { initBrowserBase, createCursor } from '../engine/launcher.js';
+import { applyWindowOptions } from '../engine/window.js';
 import { registry } from '../registry.js';
 import { tryGotoWithCheck } from '../utils/page.js';
 
@@ -123,6 +124,7 @@ export class Worker {
         if (humanizeCursorMode === true) {
             this.page.cursor = createCursor(this.page);
         }
+        applyWindowOptions(this.page, this.globalConfig?.browser, this.globalConfig?.browser?.headless === true);
 
         // 保存参数用于重新初始化
         this._targetUrl = targetUrl;
@@ -176,6 +178,7 @@ export class Worker {
         if (humanizeCursorMode === true) {
             this.page.cursor = createCursor(this.page);
         }
+        applyWindowOptions(this.page, this.globalConfig?.browser, this.globalConfig?.browser?.headless === true);
         await this._navigateToTarget(this._targetUrl || 'about:blank');
 
         if (this._navigationHandler) {
@@ -210,6 +213,7 @@ export class Worker {
         if (humanizeCursorMode === true) {
             this.page.cursor = createCursor(this.page);
         }
+        applyWindowOptions(this.page, this.globalConfig?.browser, this.globalConfig?.browser?.headless === true);
 
         if (navigationHandler) {
             this.page.on('framenavigated', async () => {

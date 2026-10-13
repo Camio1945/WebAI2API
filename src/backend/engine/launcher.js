@@ -17,6 +17,7 @@ import os from 'os';
 import { createCursor } from 'ghost-cursor-playwright-port';
 import { getRealViewport, clamp, random, sleep } from './utils.js';
 import { getPrimaryDisplayWorkArea, applyDisplayToFingerprint, maximizeBrowserWindow } from './display.js';
+import { applyWindowOptions } from './window.js';
 import { logger } from '../../utils/logger.js';
 import { getBrowserProxy, cleanupProxy } from '../../utils/proxy.js';
 
@@ -324,6 +325,12 @@ export async function initBrowserBase(config, options = {}) {
             'layout.css.backdrop-filter.enabled': false,
             // 告诉网页用户倾向于减少动画 (触发网页自身的优化)
             'ui.prefersReducedMotion': 1,
+            // 关闭 Windows 窗口遮挡检测 (Bug 1802473)
+            // 关键修复: Firefox 在窗口被其它窗口完全遮挡时会暂停刷新驱动 (rAF 不再触发)，
+            // 而 Playwright 的 scrollIntoViewIfNeeded / click 依赖 rAF 做 "stable" 检测，
+            // 会因此永久挂起，最终表现为 `点击操作失败 (xxx): CLICK_TIMEOUT`。
+            // 这也是 Firefox 官方 WebDriver 推荐关闭的项 (RecommendedPreferences)。
+            'widget.windows.window_occlusion_tracking.enabled': false,
             // 站点隔离
             ...(browserConfig.fission === false ? { 'fission.autostart': false } : {})
         }
@@ -380,6 +387,10 @@ export async function initBrowserBase(config, options = {}) {
     } else {
         page = await context.newPage();
     }
+
+    // 窗口可见性守卫配置（无头模式无需守卫；同 Context 新建的标签页会继承）
+    context._windowReadyCheck = !headlessMode;
+    applyWindowOptions(page, browserConfig, headlessMode);
 
     // 视口处理：
     // - 无头模式：强制固定视口为指纹屏幕尺寸（保证渲染稳定、坐标可预期）

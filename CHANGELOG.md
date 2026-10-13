@@ -13,10 +13,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 默认标签页：新增 `backend.pool.defaultWorker`，可指定有头模式启动后置于前台的 Worker
 - **适配器**
   - 默认配置改为单个 DeepSeek 国内版 Worker（`deepseek_text` → https://chat.deepseek.com/）
+- **浏览器**
+  - 新增窗口可见性守卫 `src/backend/engine/window.js`：交互前探测页面渲染状态，窗口被遮挡/最小化时自动恢复并置前
+  - 新增 `browser.windowAutoFocus`（默认 `false`）：置为 `true` 时每次点击交互前主动把浏览器窗口提到前台
 
 ### 🐛 Fixed
 - **浏览器**
   - 修复有头模式下窗口放大/最大化后右侧与底部出现空白区域的问题（有头模式禁用 Playwright 固定视口，让页面内容跟随真实窗口尺寸）
+  - 修复窗口被其它窗口完全遮挡时点击必定超时的问题（`点击操作失败 (xxx): CLICK_TIMEOUT`）：
+    启动时注入 `widget.windows.window_occlusion_tracking.enabled = false`（Firefox 官方 WebDriver 推荐项，Bug 1802473）。
+    此前 Firefox 会在窗口被遮挡时暂停刷新驱动（rAF 不再触发），而 Playwright 的 stable 检测依赖 rAF，导致点击永久挂起
+  - `safeClick` 的元素稳定性等待与滚动改为不依赖 requestAnimationFrame（改用定时器轮询 + 双重兜底超时），避免渲染暂停时无限等待
+  - `safeClick` 超时后自动将浏览器窗口恢复/置前并重试一次（此前会直接失败）
 
 ### 📝 Changed
 - **配置**

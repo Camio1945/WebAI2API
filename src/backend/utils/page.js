@@ -3,7 +3,7 @@
  * @description 页面认证锁、输入框等待、表单提交等页面级操作
  */
 
-import { sleep, safeClick, isPageValid, createPageCloseWatcher, getRealViewport, clamp, random } from '../engine/utils.js';
+import { sleep, safeClick, isPageValid, createPageCloseWatcher, getRealViewport, clamp, random, scrollElementIntoView } from '../engine/utils.js';
 import { TIMEOUTS } from '../../utils/constants.js';
 
 // ==========================================
@@ -170,7 +170,7 @@ export async function scrollToElement(page, selectorOrLocator, options = {}) {
         }
 
         if (element) {
-            await element.scrollIntoViewIfNeeded();
+            await scrollElementIntoView(element);
             return element;
         }
     } catch {

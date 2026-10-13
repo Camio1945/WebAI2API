@@ -94,6 +94,14 @@ export function validateBrowserConfig(data) {
         errors.push('fission 必须是布尔值');
     }
 
+    // 窗口相关开关校验
+    if (data.windowMaximized !== undefined && typeof data.windowMaximized !== 'boolean') {
+        errors.push('windowMaximized 必须是布尔值');
+    }
+    if (data.windowAutoFocus !== undefined && typeof data.windowAutoFocus !== 'boolean') {
+        errors.push('windowAutoFocus 必须是布尔值');
+    }
+
     // Proxy 校验
     if (data.proxy) {
         if (data.proxy.enable !== undefined && typeof data.proxy.enable !== 'boolean') {
