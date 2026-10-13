@@ -110,7 +110,7 @@
 **Docker CLI 启动**
 ```bash
 docker run -d --name webai-2api \
-  -p 3000:3000 \
+  -p 46377:46377 \
   -v "$(pwd)/data:/app/data" \
   --shm-size=2gb \
   foxhui/webai-2api:latest
@@ -134,7 +134,7 @@ docker-compose up -d
 ```yaml
 server:
   # 监听端口
-  port: 3000
+  port: 46377
   # 鉴权 API Token (可使用 npm run genkey 生成)
   # 该配置会对 API 接口和 WebUI 生效
   auth: sk-change-me-to-your-secure-key
@@ -147,7 +147,7 @@ server:
 
 服务启动后, 打开浏览器访问:
 ```
-http://localhost:3000
+http://localhost:46377
 ```
 
 > [!TIP]
@@ -173,10 +173,10 @@ http://localhost:3000
 3. **SSH 隧道连接示例**(公网服务器推荐):
    ```bash
    # 在本地终端运行,将服务器的 WebUI 映射到本地
-   ssh -L 3000:127.0.0.1:3000 root@服务器IP
+   ssh -L 46377:127.0.0.1:46377 root@服务器IP
    
    # 然后在本地访问
-   # WebUI: http://localhost:3000
+   # WebUI: http://localhost:46377
    ```
 
 ---
@@ -214,7 +214,7 @@ http://localhost:3000
 
 **请求示例**:
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:46377/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
@@ -254,7 +254,7 @@ curl http://localhost:3000/v1/chat/completions \
 
 **请求示例**:
 ```bash
-curl http://localhost:3000/v1/models \
+curl http://localhost:46377/v1/models \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -271,7 +271,7 @@ curl http://localhost:3000/v1/models \
 **请求示例**:
 ```bash
 # 获取指定实例和域名的 Cookie
-curl "http://localhost:3000/v1/cookies?name=browser_default&domain=lmarena.ai" \
+curl "http://localhost:46377/v1/cookies?name=browser_default&domain=lmarena.ai" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 

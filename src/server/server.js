@@ -54,7 +54,7 @@ const {
 } = backend;
 
 /** @type {number} 服务器端口 */
-const PORT = config.server?.port || 3000;
+const PORT = config.server?.port || 46377;
 
 /** @type {string} 认证令牌 */
 const AUTH_TOKEN = config.server?.auth;

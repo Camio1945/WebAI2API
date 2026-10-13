@@ -113,7 +113,7 @@ This project supports both **source code execution** and **Docker containerized 
 **Start with Docker CLI**
 ```bash
 docker run -d --name webai-2api \
-  -p 3000:3000 \
+  -p 46377:46377 \
   -v "$(pwd)/data:/app/data" \
   --shm-size=2gb \
   foxhui/webai-2api:latest
@@ -137,7 +137,7 @@ On first run, the program will copy the configuration file from `config.example.
 ```yaml
 server:
   # Listening port
-  port: 3000
+  port: 46377
   # Authentication API Token (can be generated using npm run genkey)
   # This configuration applies to both API endpoints and the WebUI
   auth: sk-change-me-to-your-secure-key
@@ -150,7 +150,7 @@ server:
 
 After the service starts, open your browser and visit:
 ```
-http://localhost:3000
+http://localhost:46377
 ```
 
 > [!TIP]
@@ -176,10 +176,10 @@ http://localhost:3000
 3. **SSH Tunnel Connection Example** (Recommended for public servers):
    ```bash
    # Run in your local terminal to map the server's WebUI to local
-   ssh -L 3000:127.0.0.1:3000 root@Server_IP
+   ssh -L 46377:127.0.0.1:46377 root@Server_IP
    
    # Then access locally
-   # WebUI: http://localhost:3000
+   # WebUI: http://localhost:46377
    ```
 
 ---
@@ -217,7 +217,7 @@ http://localhost:3000
 
 **Request Example**:
 ```bash
-curl http://localhost:3000/v1/chat/completions \
+curl http://localhost:46377/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{
@@ -257,7 +257,7 @@ curl http://localhost:3000/v1/chat/completions \
 
 **Request Example**:
 ```bash
-curl http://localhost:3000/v1/models \
+curl http://localhost:46377/v1/models \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -274,7 +274,7 @@ curl http://localhost:3000/v1/models \
 **Request Example**:
 ```bash
 # Get cookies for a specific instance and domain
-curl "http://localhost:3000/v1/cookies?name=browser_default&domain=lmarena.ai" \
+curl "http://localhost:46377/v1/cookies?name=browser_default&domain=lmarena.ai" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 

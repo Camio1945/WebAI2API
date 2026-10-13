@@ -44,7 +44,7 @@ function writeConfig(config) {
 export function getServerConfig() {
     const config = readRawConfig();
     return {
-        port: config.server?.port || 3000,
+        port: config.server?.port || 46377,
         authToken: config.server?.auth || '',
         keepaliveMode: config.server?.keepalive?.mode || 'comment',
         logLevel: config.logLevel || 'info',

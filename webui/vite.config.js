@@ -23,11 +23,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/admin': {
-        target: 'http://127.0.0.1:3000',
+        target: 'http://127.0.0.1:46377',
         changeOrigin: true
       },
       '/v1': {
-        target: 'http://127.0.0.1:3000',
+        target: 'http://127.0.0.1:46377',
         changeOrigin: true
       }
     }
