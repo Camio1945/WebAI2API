@@ -16,6 +16,7 @@ import path from 'path';
 import os from 'os';
 import { createCursor } from 'ghost-cursor-playwright-port';
 import { getRealViewport, clamp, random, sleep } from './utils.js';
+import { getPrimaryDisplayWorkArea, applyDisplayToFingerprint, maximizeBrowserWindow } from './display.js';
 import { logger } from '../../utils/logger.js';
 import { getBrowserProxy, cleanupProxy } from '../../utils/proxy.js';
 
@@ -277,9 +278,24 @@ export async function initBrowserBase(config, options = {}) {
 
     const browserConfig = config?.browser || {};
 
+    // 有头模式：不强制固定视口，让页面内容跟随窗口尺寸（避免窗口最大化后右侧/底部出现空白）
+    const useRealWindowViewport = !headlessMode;
+    // 有头模式：把窗口调整为屏幕工作区大小（等价于最大化），可通过 browser.windowMaximized 关闭
+    const wantMaximizedWindow = useRealWindowViewport && browserConfig.windowMaximized !== false;
+
     // 获取指纹对象（指纹文件放在对应的 userDataDir 内）
     const fingerprintPath = path.join(userDataDir, 'fingerprint.json');
     const myFingerprint = await getPersistentFingerprint(fingerprintPath);
+
+    // 按主显示器尺寸调整窗口（仅修改内存中的指纹，不回写文件）
+    if (wantMaximizedWindow) {
+        const display = await getPrimaryDisplayWorkArea();
+        if (display && applyDisplayToFingerprint(myFingerprint, display)) {
+            logger.info('浏览器', `[${markLabel}] 窗口将按主显示器工作区调整: ${display.workWidth}x${display.workHeight} (分辨率 ${display.screenWidth}x${display.screenHeight})`);
+        } else {
+            logger.debug('浏览器', `[${markLabel}] 未能探测显示器尺寸，窗口沿用指纹尺寸`);
+        }
+    }
 
     // 构造 Camoufox 启动选项
     const currentOS = getCurrentOS();
@@ -313,10 +329,26 @@ export async function initBrowserBase(config, options = {}) {
         }
     };
 
+    // 有头模式：禁用 Playwright 的固定视口（viewport: null），
+    // 让页面使用真实窗口尺寸，窗口被放大/最大化时内容会自动铺满，不再出现空白区域
+    if (useRealWindowViewport) {
+        camoufoxLaunchOptions.viewport = null;
+    }
+
     // 代理配置
     const proxyObj = await getBrowserProxy(proxyConfig);
     if (proxyObj) {
         camoufoxLaunchOptions.proxy = proxyObj;
+    }
+
+    // 内容进程沙箱默认关闭 (MOZ_DISABLE_CONTENT_SANDBOX=1)
+    // 原因: 部分环境 (受限的 Windows / 虚拟机 / 容器) 下 Firefox 内容进程沙箱不可用，
+    //       会导致浏览器启动卡到 180s 超时并降级进入安全模式 (表现为 /v1 接口 503)。
+    // 策略: 仅在用户未显式设置该环境变量时注入默认值；显式设置可覆盖。
+    //       如需保留沙箱，可将 browser.disableContentSandbox 设为 false。
+    if (browserConfig.disableContentSandbox !== false && process.env.MOZ_DISABLE_CONTENT_SANDBOX === undefined) {
+        process.env.MOZ_DISABLE_CONTENT_SANDBOX = '1';
+        logger.info('浏览器', `[${markLabel}] 已默认禁用内容进程沙箱 (MOZ_DISABLE_CONTENT_SANDBOX=1)`);
     }
 
     // 启动 Camoufox
@@ -349,10 +381,25 @@ export async function initBrowserBase(config, options = {}) {
         page = await context.newPage();
     }
 
-    // 强制刷新视口大小 (使用指纹中的屏幕尺寸)
-    const screenWidth = myFingerprint.screen?.availWidth || 1366;
-    const screenHeight = myFingerprint.screen?.availHeight || 768;
-    await page.setViewportSize({ width: screenWidth, height: screenHeight });
+    // 视口处理：
+    // - 无头模式：强制固定视口为指纹屏幕尺寸（保证渲染稳定、坐标可预期）
+    // - 有头模式：已通过 viewport: null 使用真实窗口尺寸，无需（也不应）再固定视口
+    if (!useRealWindowViewport) {
+        const screenWidth = myFingerprint.screen?.availWidth || 1366;
+        const screenHeight = myFingerprint.screen?.availHeight || 768;
+        await page.setViewportSize({ width: screenWidth, height: screenHeight });
+    }
+
+    // 有头模式：真正最大化窗口（等价于点击最大化按钮）
+    // 指纹里的窗口尺寸只是把窗口"调大"，sizemode 仍是 normal；这里再触发一次系统级最大化
+    if (wantMaximizedWindow) {
+        const maximized = await maximizeBrowserWindow();
+        if (maximized) {
+            logger.info('浏览器', `[${markLabel}] 窗口已最大化`);
+        } else {
+            logger.warn('浏览器', `[${markLabel}] 窗口最大化未生效，窗口尺寸将保持为主显示器工作区大小`);
+        }
+    }
 
     // CSS 性能优化注入
     const cssInjectConfig = browserConfig.cssInject || {};

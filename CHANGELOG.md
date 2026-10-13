@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ Added
+- **浏览器**
+  - 有头模式窗口真正最大化：新增 `browser.windowMaximized`（默认 `true`）。启动时探测主显示器工作区并对齐窗口尺寸，随后调用系统 API（Windows: `ShowWindow(SW_MAXIMIZE)`）触发真正的最大化状态
+  - 默认标签页：新增 `backend.pool.defaultWorker`，可指定有头模式启动后置于前台的 Worker
+- **适配器**
+  - 默认配置改为单个 DeepSeek 国内版 Worker（`deepseek_text` → https://chat.deepseek.com/）
+
+### 🐛 Fixed
+- **浏览器**
+  - 修复有头模式下窗口放大/最大化后右侧与底部出现空白区域的问题（有头模式禁用 Playwright 固定视口，让页面内容跟随真实窗口尺寸）
+
+### 📝 Changed
+- **配置**
+  - 默认配置只保留一个 Worker：Firefox/Playwright 下每个 Worker 会占用一个独立的浏览器窗口（不是标签页），多 Worker 会导致启动时弹出多个窗口
+  - `config.example.yaml` 补充说明：追加 Worker 会额外打开一个窗口
+
 ## [3.6.7] - 2026-04-24
 
 ### 🐛 Fixed

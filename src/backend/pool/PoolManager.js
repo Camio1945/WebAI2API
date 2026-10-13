@@ -128,6 +128,29 @@ export class PoolManager {
             throw new Error('所有 Worker 初始化都失败了，无法启动服务');
         }
 
+        // 默认标签页：把指定 Worker 的标签页置于前台
+        // 优先级：backend.pool.defaultWorker 指定的名称 > 列表中最后一个 Worker
+        // （多个 Worker 共享同一浏览器时，后创建的标签页会覆盖先前的，因此需要显式前置）
+        try {
+            const defaultName = this.config.backend?.pool?.defaultWorker;
+            let target = null;
+            if (defaultName) {
+                target = this.workers.find(w => w.name === defaultName) || null;
+                if (!target) {
+                    logger.warn('工作池', `defaultWorker "${defaultName}" 未找到，回退到最后一个 Worker`);
+                }
+            }
+            if (!target) {
+                target = this.workers[this.workers.length - 1];
+            }
+            if (target?.page) {
+                await target.page.bringToFront();
+                logger.info('工作池', `默认标签页: ${target.name} (${target.type})`);
+            }
+        } catch (e) {
+            logger.debug('工作池', `设置默认标签页失败: ${e.message}`);
+        }
+
         this.initialized = true;
         logger.info('工作池', `工作池初始化完成，共 ${this.workers.length} 个 Worker 就绪 (${browserMap.size} 个浏览器实例)`);
     }

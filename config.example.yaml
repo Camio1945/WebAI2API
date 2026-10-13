@@ -44,6 +44,10 @@ backend:
     # 程序等待生成结果返回的最大超时时间，单位毫秒
     waitTimeout: 120000
 
+    # 有头模式启动后默认置于前台的标签页对应的 Worker 名称
+    # 留空或不配置时，使用列表中最后一个 Worker
+    # defaultWorker: "deepseek"
+
     # ========================================
     # 浏览器实例列表
     # ========================================
@@ -63,7 +67,7 @@ backend:
         # 使用 Google OAuth 等统一登录时，只需登录一次即可用于所有 Worker
         
         # 该浏览器实例具备的能力 (适配器列表)
-        # 相当于在这个浏览器里打开了不同的标签页
+        # 说明: 每个 Worker 都会打开自己的页面；Firefox/Playwright 下每个 Worker 占用一个独立窗口
         workers:
           - name: "default"            # 唯一标识 (用于登录模式和日志显示)
             # 适配器类型列表:
@@ -86,6 +90,12 @@ backend:
             #   doubao_text            (豆包 文本生成)
             #   test                   (浏览器检测，仅供调试使用)
             type: lmarena              # 适配器类型
+
+            # 追加更多 Worker 可以在同一浏览器实例（共享登录状态）中启用更多适配器。
+            # 注意: Firefox/Playwright 下每个 Worker 会占用一个独立的浏览器窗口（不是标签页）。
+            # 例如再加一个 DeepSeek 国内版 (https://chat.deepseek.com/)
+            # - name: "deepseek"
+            #   type: deepseek_text
 
       # ------------------------------------------------
       # 以下为多实例配置示例 (默认注释)
@@ -167,6 +177,19 @@ browser:
   
   # 是否启用无头模式
   headless: false
+
+  # 有头模式下是否让浏览器窗口最大化（自动探测主显示器工作区并填满）
+  # true  (默认): 启动时窗口自动铺满屏幕工作区，页面内容填满窗口，不留空白
+  # false       : 窗口沿用指纹自带的尺寸
+  # 说明: 有头模式下会自动禁用 Playwright 的固定视口，避免窗口放大后出现空白区域
+  windowMaximized: true
+
+  # 是否禁用 Firefox 内容进程沙箱 (MOZ_DISABLE_CONTENT_SANDBOX=1)
+  # 部分环境 (受限的 Windows / 虚拟机 / 容器) 下内容进程沙箱不可用，
+  # 会导致浏览器启动卡到 180s 超时并进入安全模式 (表现为 /v1 接口 503)。
+  # 默认 true: 未显式设置该环境变量时自动注入 1，无需手动 export。
+  # 设为 false 可保留沙箱 (隔离性更好)，但若环境本身不支持沙箱会导致启动失败。
+  disableContentSandbox: true
 
   # 拟人鼠标轨迹模式
   # - false:  禁用拟人轨迹，使用 Playwright 原生点击（性能最好，但会被自动化检测）
